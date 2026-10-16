@@ -1,0 +1,9 @@
+*.md
+/wish
+*.o
+/build/
+
+/tests/
+/tester/
+/test-wish.sh
+/tests-out/
