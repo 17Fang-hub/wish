@@ -13,9 +13,9 @@ void print_error()
     std::cerr << "An error has occurred\n";
 }
 
-void run_program(std::vector<std::string>& args,
-                 const std::vector<std::string>& shell_path,
-                 const std::string& output_file)
+pid_t run_program(std::vector<std::string>& args,
+                  const std::vector<std::string>& shell_path,
+                  const std::string& output_file)
 {
     std::string program;
     for (const std::string& directory : shell_path) {
@@ -28,7 +28,7 @@ void run_program(std::vector<std::string>& args,
 
     if (program.empty()) {
         print_error();
-        return;
+        return -1;
     }
 
     std::vector<char*> argv;
@@ -40,7 +40,7 @@ void run_program(std::vector<std::string>& args,
     pid_t pid = fork();
     if (pid < 0) {
         print_error();
-        return;
+        return -1;
     }
 
     if (pid == 0) {
@@ -61,7 +61,7 @@ void run_program(std::vector<std::string>& args,
         _exit(1);
     }
 
-    waitpid(pid, nullptr, 0);
+    return pid;
 }
 
 int main(int argc, char* argv[])
@@ -95,63 +95,75 @@ int main(int argc, char* argv[])
             break;
         }
 
-        std::string output_file;
-        std::size_t redirect = line.find('>');
-        if (redirect != std::string::npos) {
-            if (line.find('>', redirect + 1) != std::string::npos) {
-                print_error();
+        std::istringstream commands(line);
+        std::string command;
+        std::vector<pid_t> pids;
+        while (std::getline(commands, command, '&')) {
+            std::string output_file;
+            std::size_t redirect = command.find('>');
+            if (redirect != std::string::npos) {
+                if (command.find('>', redirect + 1) != std::string::npos) {
+                    print_error();
+                    continue;
+                }
+
+                std::istringstream files(command.substr(redirect + 1));
+                std::string extra_file;
+                if (!(files >> output_file) || (files >> extra_file)) {
+                    print_error();
+                    continue;
+                }
+                command = command.substr(0, redirect);
+            }
+
+            std::istringstream words(command);
+            std::vector<std::string> args;
+            std::string word;
+            while (words >> word) {
+                args.push_back(word);
+            }
+
+            if (args.empty()) {
+                if (!output_file.empty()) {
+                    print_error();
+                }
                 continue;
             }
 
-            std::istringstream files(line.substr(redirect + 1));
-            std::string extra_file;
-            if (!(files >> output_file) || (files >> extra_file)) {
-                print_error();
+            if (args[0] == "exit") {
+                if (args.size() != 1) {
+                    print_error();
+                    continue;
+                }
+                return 0;
+            }
+
+            if (args[0] == "cd") {
+                if (args.size() != 2) {
+                    print_error();
+                } else if (chdir(args[1].c_str()) != 0) {
+                    print_error();
+                }
                 continue;
             }
-            line = line.substr(0, redirect);
-        }
 
-        std::istringstream words(line);
-        std::vector<std::string> args;
-        std::string word;
-        while (words >> word) {
-            args.push_back(word);
-        }
-
-        if (args.empty()) {
-            if (!output_file.empty()) {
-                print_error();
-            }
-            continue;
-        }
-
-        if (args[0] == "exit") {
-            if (args.size() != 1) {
-                print_error();
+            if (args[0] == "path") {
+                shell_path.clear();
+                for (std::size_t i = 1; i < args.size(); i++) {
+                    shell_path.push_back(args[i]);
+                }
                 continue;
             }
-            return 0;
-        }
 
-        if (args[0] == "cd") {
-            if (args.size() != 2) {
-                print_error();
-            } else if (chdir(args[1].c_str()) != 0) {
-                print_error();
+            pid_t pid = run_program(args, shell_path, output_file);
+            if (pid > 0) {
+                pids.push_back(pid);
             }
-            continue;
         }
 
-        if (args[0] == "path") {
-            shell_path.clear();
-            for (std::size_t i = 1; i < args.size(); i++) {
-                shell_path.push_back(args[i]);
-            }
-            continue;
+        for (pid_t pid : pids) {
+            waitpid(pid, nullptr, 0);
         }
-
-        run_program(args, shell_path, output_file);
     }
 
     if (input->bad()) {
