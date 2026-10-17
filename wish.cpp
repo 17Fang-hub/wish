@@ -1,11 +1,51 @@
+#include <cerrno>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
+
+#include <sys/wait.h>
+#include <unistd.h>
 
 void print_error()
 {
     std::cerr << "An error has occurred\n";
+}
+
+void run_program(std::vector<std::string>& args)
+{
+    std::string program = "/bin/" + args[0];
+    if (access(program.c_str(), X_OK) != 0) {
+        print_error();
+        return;
+    }
+
+    std::vector<char*> argv;
+    for (std::string& arg : args) {
+        argv.push_back(arg.data());
+    }
+    argv.push_back(nullptr);
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        print_error();
+        return;
+    }
+
+    if (pid == 0) {
+        execv(program.c_str(), argv.data());
+        // Успішний execv не повертається до цього коду.
+        print_error();
+        _exit(1);
+    }
+
+    while (waitpid(pid, nullptr, 0) == -1) {
+        if (errno != EINTR) {
+            print_error();
+            return;
+        }
+    }
 }
 
 int main(int argc, char* argv[])
@@ -39,22 +79,25 @@ int main(int argc, char* argv[])
         }
 
         std::istringstream words(line);
-        std::string command;
-        if (!(words >> command)) {
+        std::vector<std::string> args;
+        std::string word;
+        while (words >> word) {
+            args.push_back(word);
+        }
+
+        if (args.empty()) {
             continue;
         }
 
-        if (command == "exit") {
-            std::string extra_argument;
-            if (words >> extra_argument) {
+        if (args[0] == "exit") {
+            if (args.size() != 1) {
                 print_error();
                 continue;
             }
             return 0;
         }
 
-        // Запуск зовнішніх команд додамо на наступному етапі.
-        print_error();
+        run_program(args);
     }
 
     if (input->bad()) {
