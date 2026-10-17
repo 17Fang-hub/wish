@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include <fcntl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -13,7 +14,8 @@ void print_error()
 }
 
 void run_program(std::vector<std::string>& args,
-                 const std::vector<std::string>& shell_path)
+                 const std::vector<std::string>& shell_path,
+                 const std::string& output_file)
 {
     std::string program;
     for (const std::string& directory : shell_path) {
@@ -42,6 +44,17 @@ void run_program(std::vector<std::string>& args,
     }
 
     if (pid == 0) {
+        if (!output_file.empty()) {
+            int fd = open(output_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd < 0) {
+                print_error();
+                _exit(1);
+            }
+            dup2(fd, STDOUT_FILENO);
+            dup2(fd, STDERR_FILENO);
+            close(fd);
+        }
+
         execv(program.c_str(), argv.data());
         // Успішний execv не повертається до цього коду.
         print_error();
@@ -82,6 +95,23 @@ int main(int argc, char* argv[])
             break;
         }
 
+        std::string output_file;
+        std::size_t redirect = line.find('>');
+        if (redirect != std::string::npos) {
+            if (line.find('>', redirect + 1) != std::string::npos) {
+                print_error();
+                continue;
+            }
+
+            std::istringstream files(line.substr(redirect + 1));
+            std::string extra_file;
+            if (!(files >> output_file) || (files >> extra_file)) {
+                print_error();
+                continue;
+            }
+            line = line.substr(0, redirect);
+        }
+
         std::istringstream words(line);
         std::vector<std::string> args;
         std::string word;
@@ -90,6 +120,9 @@ int main(int argc, char* argv[])
         }
 
         if (args.empty()) {
+            if (!output_file.empty()) {
+                print_error();
+            }
             continue;
         }
 
@@ -118,7 +151,7 @@ int main(int argc, char* argv[])
             continue;
         }
 
-        run_program(args, shell_path);
+        run_program(args, shell_path, output_file);
     }
 
     if (input->bad()) {
