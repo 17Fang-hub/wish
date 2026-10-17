@@ -12,10 +12,19 @@ void print_error()
     std::cerr << "An error has occurred\n";
 }
 
-void run_program(std::vector<std::string>& args)
+void run_program(std::vector<std::string>& args,
+                 const std::vector<std::string>& shell_path)
 {
-    std::string program = "/bin/" + args[0];
-    if (access(program.c_str(), X_OK) != 0) {
+    std::string program;
+    for (const std::string& directory : shell_path) {
+        std::string candidate = directory + "/" + args[0];
+        if (access(candidate.c_str(), X_OK) == 0) {
+            program = candidate;
+            break;
+        }
+    }
+
+    if (program.empty()) {
         print_error();
         return;
     }
@@ -62,6 +71,7 @@ int main(int argc, char* argv[])
         input = &batch_file;
     }
 
+    std::vector<std::string> shell_path = {"/bin"};
     std::string line;
     while (true) {
         if (interactive) {
@@ -100,7 +110,15 @@ int main(int argc, char* argv[])
             continue;
         }
 
-        run_program(args);
+        if (args[0] == "path") {
+            shell_path.clear();
+            for (std::size_t i = 1; i < args.size(); i++) {
+                shell_path.push_back(args[i]);
+            }
+            continue;
+        }
+
+        run_program(args, shell_path);
     }
 
     if (input->bad()) {
