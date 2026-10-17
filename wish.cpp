@@ -91,6 +91,15 @@ int main(int argc, char* argv[])
             return 0;
         }
 
+        if (args[0] == "cd") {
+            if (args.size() != 2) {
+                print_error();
+            } else if (chdir(args[1].c_str()) != 0) {
+                print_error();
+            }
+            continue;
+        }
+
         run_program(args);
     }
 
