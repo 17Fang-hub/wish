@@ -1,4 +1,3 @@
-#include <cerrno>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -40,12 +39,7 @@ void run_program(std::vector<std::string>& args)
         _exit(1);
     }
 
-    while (waitpid(pid, nullptr, 0) == -1) {
-        if (errno != EINTR) {
-            print_error();
-            return;
-        }
-    }
+    waitpid(pid, nullptr, 0);
 }
 
 int main(int argc, char* argv[])
